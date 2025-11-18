@@ -3,9 +3,7 @@ import { useMemo, useState } from 'react';
 import ApplicationFilters from './components/ApplicationFilters';
 import ApplicationForm from './components/ApplicationForm';
 import ApplicationList from './components/ApplicationList';
-import {
-  sampleApplications,
-} from './data/sampleApplications';
+import { sampleApplications } from './data/sampleApplications';
 
 export default function App() {
   const [applications, setApplications] = useState(sampleApplications);
@@ -15,7 +13,10 @@ export default function App() {
   );
 
   const nextId = useMemo(
-    () => (applications.length ? Math.max(...applications.map((a) => a.id)) + 1 : 1),
+    () =>
+      applications.length
+        ? Math.max(...applications.map((a) => a.id)) + 1
+        : 1,
     [applications]
   );
 
@@ -31,15 +32,14 @@ export default function App() {
     });
   }, [applications, filters]);
 
-  const selectedApplication = applications.find((a) => a.id === selectedId) || null;
+  const selectedApplication =
+    applications.find((a) => a.id === selectedId) || null;
 
   const handleSaveApplication = (form) => {
     if (selectedApplication) {
       // Edit existing
       const updated = applications.map((app) =>
-        app.id === selectedApplication.id
-          ? { ...app, ...form }
-          : app
+        app.id === selectedApplication.id ? { ...app, ...form } : app
       );
       setApplications(updated);
     } else {
@@ -69,6 +69,11 @@ export default function App() {
     setSelectedId(null);
   };
 
+  // NEW: explicit manual-add button
+  const handleNewApplication = () => {
+    setSelectedId(null); // form switches to "Add Application" mode
+  };
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -78,7 +83,28 @@ export default function App() {
             Internship &amp; job application tracker for busy college students.
           </div>
         </div>
-        <div className="app-badge">CS360 Prototype · Frontend Only</div>
+
+        {/* NEW header buttons */}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={handleNewApplication}
+          >
+            + New Application
+          </button>
+
+          {/* This will be wired later to Gmail/Outlook OAuth */}
+          <button
+            type="button"
+            className="btn-ghost"
+            title="Future: connect email and auto-update statuses"
+          >
+            Connect Email (Coming Soon)
+          </button>
+
+          <div className="app-badge">CS360 Prototype · Frontend Only</div>
+        </div>
       </header>
 
       <ApplicationFilters filters={filters} onChange={setFilters} />
