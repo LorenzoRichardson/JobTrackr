@@ -15,6 +15,13 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+// 🔐 Basic auth scaffolding: later we plug real auth/JWT in here
+function getUserIdFromRequest(req) {
+  // TODO: replace with real authentication (e.g., decoded JWT)
+  // For now we always use demo user id = 1
+  return 1;
+}
+
 app.use(
   cors({
     origin: 'http://localhost:5173',
@@ -47,12 +54,12 @@ app.get('/api/db-test', async (req, res) => {
 });
 
 // ==============================
-// Applications CRUD (user_id = 1 demo)
+// Applications CRUD
 // ==============================
 
-// GET all applications for demo user
+// GET all applications for current user
 app.get('/api/applications', async (req, res) => {
-  const userId = 1; // TODO: real auth later
+  const userId = getUserIdFromRequest(req);
   try {
     const result = await pool.query(
       'SELECT * FROM applications WHERE user_id = $1 ORDER BY created_at DESC',
@@ -67,7 +74,7 @@ app.get('/api/applications', async (req, res) => {
 
 // CREATE a new application
 app.post('/api/applications', async (req, res) => {
-  const userId = 1;
+  const userId = getUserIdFromRequest(req);
   const {
     company_name,
     role_title,
@@ -126,7 +133,7 @@ app.post('/api/applications', async (req, res) => {
 
 // UPDATE an application
 app.put('/api/applications/:id', async (req, res) => {
-  const userId = 1;
+  const userId = getUserIdFromRequest(req);
   const appId = Number(req.params.id);
   const {
     company_name,
@@ -180,7 +187,7 @@ app.put('/api/applications/:id', async (req, res) => {
 
 // DELETE an application
 app.delete('/api/applications/:id', async (req, res) => {
-  const userId = 1;
+  const userId = getUserIdFromRequest(req);
   const appId = Number(req.params.id);
 
   try {
@@ -197,6 +204,55 @@ app.delete('/api/applications/:id', async (req, res) => {
   } catch (err) {
     console.error('DELETE /api/applications/:id error:', err);
     res.status(500).json({ error: 'Failed to delete application' });
+  }
+});
+
+// ==============================
+// Notes API (per application)
+// ==============================
+
+// GET notes for an application
+app.get('/api/applications/:id/notes', async (req, res) => {
+  const userId = getUserIdFromRequest(req);
+  const appId = Number(req.params.id);
+
+  try {
+    const result = await pool.query(
+      `SELECT id, application_id, user_id, content, created_at
+       FROM notes
+       WHERE application_id = $1 AND user_id = $2
+       ORDER BY created_at DESC`,
+      [appId, userId]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error('GET /api/applications/:id/notes error:', err);
+    res.status(500).json({ error: 'Failed to fetch notes' });
+  }
+});
+
+// CREATE a note for an application
+app.post('/api/applications/:id/notes', async (req, res) => {
+  const userId = getUserIdFromRequest(req);
+  const appId = Number(req.params.id);
+  const { content } = req.body;
+
+  if (!content || !content.trim()) {
+    return res.status(400).json({ error: 'content is required' });
+  }
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO notes (application_id, user_id, content)
+       VALUES ($1, $2, $3)
+       RETURNING id, application_id, user_id, content, created_at`,
+      [appId, userId, content.trim()]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('POST /api/applications/:id/notes error:', err);
+    res.status(500).json({ error: 'Failed to create note' });
   }
 });
 
@@ -232,7 +288,7 @@ app.post('/api/email/simulate', (req, res) => {
 //  - inserts a note
 //  - returns the updated application
 app.post('/api/applications/email-update', async (req, res) => {
-  const userId = 1;
+  const userId = getUserIdFromRequest(req);
   const { company_guess, status, note } = req.body;
 
   if (!company_guess || !status) {
@@ -271,7 +327,7 @@ app.post('/api/applications/email-update', async (req, res) => {
 
     const updatedApp = updateResult.rows[0];
 
-    // Insert note (best-effort, don't fail whole request if this errors)
+    // Insert note (best-effort)
     if (note) {
       try {
         await pool.query(
