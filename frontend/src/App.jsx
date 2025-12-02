@@ -1,24 +1,36 @@
 // src/App.jsx
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import ApplicationFilters from './components/ApplicationFilters';
 import ApplicationForm from './components/ApplicationForm';
 import ApplicationList from './components/ApplicationList';
-import { sampleApplications } from './data/sampleApplications';
+import EmailSimulator from './components/EmailSimulator';
 
 export default function App() {
-  const [applications, setApplications] = useState(sampleApplications);
+  const [applications, setApplications] = useState([]);
   const [filters, setFilters] = useState({ status: '', query: '' });
-  const [selectedId, setSelectedId] = useState(
-    sampleApplications.length > 0 ? sampleApplications[0].id : null
-  );
+  const [selectedId, setSelectedId] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
-  const nextId = useMemo(
-    () =>
-      applications.length
-        ? Math.max(...applications.map((a) => a.id)) + 1
-        : 1,
-    [applications]
-  );
+  // Load applications from backend on mount
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch('/api/applications');
+        const data = await res.json();
+        setApplications(data);
+        if (data.length > 0) {
+          setSelectedId(data[0].id);
+        }
+      } catch (err) {
+        console.error('Failed to load applications:', err);
+        setLoadError('Failed to load applications from server.');
+      } finally {
+        setLoading(false);
+      }
+    }
+    load();
+  }, []);
 
   const filteredApps = useMemo(() => {
     return applications.filter((app) => {
@@ -35,29 +47,47 @@ export default function App() {
   const selectedApplication =
     applications.find((a) => a.id === selectedId) || null;
 
-  const handleSaveApplication = (form) => {
-    if (selectedApplication) {
-      // Edit existing
-      const updated = applications.map((app) =>
-        app.id === selectedApplication.id ? { ...app, ...form } : app
-      );
-      setApplications(updated);
-    } else {
-      // Add new
-      const newApp = {
-        id: nextId,
-        ...form,
-        notes: [],
-      };
-      setApplications([newApp, ...applications]);
-      setSelectedId(newApp.id);
+  const handleSaveApplication = async (form) => {
+    try {
+      if (selectedApplication) {
+        // UPDATE
+        const res = await fetch(`/api/applications/${selectedApplication.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(form),
+        });
+        const updated = await res.json();
+        setApplications((prev) =>
+          prev.map((app) => (app.id === updated.id ? updated : app))
+        );
+      } else {
+        // CREATE
+        const res = await fetch('/api/applications', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(form),
+        });
+        const created = await res.json();
+        setApplications((prev) => [created, ...prev]);
+        setSelectedId(created.id);
+      }
+    } catch (err) {
+      console.error('Save application failed:', err);
+      alert('Failed to save application. Check console for details.');
     }
   };
 
-  const handleDelete = (id) => {
-    setApplications(applications.filter((a) => a.id !== id));
-    if (selectedId === id) {
-      setSelectedId(null);
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this application?')) return;
+    try {
+      await fetch(`/api/applications/${id}`, { method: 'DELETE' });
+      setApplications((prev) => prev.filter((a) => a.id !== id));
+      if (selectedId === id) {
+        setSelectedId(null);
+      }
+    } catch (err) {
+      console.error('Delete application failed:', err);
+      alert('Failed to delete application.');
     }
   };
 
@@ -69,9 +99,36 @@ export default function App() {
     setSelectedId(null);
   };
 
-  // NEW: explicit manual-add button
   const handleNewApplication = () => {
-    setSelectedId(null); // form switches to "Add Application" mode
+    setSelectedId(null);
+  };
+
+  // 🔴 NEW: email simulator now calls backend to persist status + note
+  const handleEmailStatus = async (result) => {
+    const { company_guess, status, note } = result || {};
+    if (!status || !company_guess) return;
+
+    try {
+      const res = await fetch('/api/applications/email-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company_guess, status, note }),
+      });
+
+      if (!res.ok) {
+        console.error('Email update failed:', await res.text());
+        return;
+      }
+
+      const updated = await res.json();
+
+      // Update local state so dashboard reflects DB
+      setApplications((prev) =>
+        prev.map((app) => (app.id === updated.id ? updated : app))
+      );
+    } catch (err) {
+      console.error('Email update error:', err);
+    }
   };
 
   return (
@@ -84,7 +141,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* NEW header buttons */}
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button
             type="button"
@@ -94,35 +150,48 @@ export default function App() {
             + New Application
           </button>
 
-          {/* This will be wired later to Gmail/Outlook OAuth */}
           <button
             type="button"
             className="btn-ghost"
-            title="Future: connect email and auto-update statuses"
+            title="Future: connect email inbox and auto-update statuses"
           >
             Connect Email (Coming Soon)
           </button>
 
-          <div className="app-badge">CS360 Prototype · Frontend Only</div>
+          <div className="app-badge">CS360 Prototype · Full Stack</div>
         </div>
       </header>
 
+      {loadError && (
+        <div className="panel" style={{ marginBottom: 10 }}>
+          <div className="empty-state">{loadError}</div>
+        </div>
+      )}
+
       <ApplicationFilters filters={filters} onChange={setFilters} />
 
-      <div className="dashboard-grid">
-        <ApplicationForm
-          selected={selectedApplication}
-          onSave={handleSaveApplication}
-          onClearSelection={handleClearSelection}
-        />
+      {loading ? (
+        <div className="panel">
+          <div className="empty-state">Loading applications…</div>
+        </div>
+      ) : (
+        <div className="dashboard-grid">
+          <ApplicationForm
+            selected={selectedApplication}
+            onSave={handleSaveApplication}
+            onClearSelection={handleClearSelection}
+          />
 
-        <ApplicationList
-          applications={filteredApps}
-          selectedId={selectedId}
-          onSelect={handleSelect}
-          onDelete={handleDelete}
-        />
-      </div>
+          <ApplicationList
+            applications={filteredApps}
+            selectedId={selectedId}
+            onSelect={handleSelect}
+            onDelete={handleDelete}
+          />
+        </div>
+      )}
+
+      <EmailSimulator onEmailStatus={handleEmailStatus} />
     </div>
   );
 }
