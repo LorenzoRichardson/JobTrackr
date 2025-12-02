@@ -1,42 +1,56 @@
 :root {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  color-scheme: light dark;
-  background-color: #0f172a;
+  color-scheme: dark;
+  background-color: #0d1537;
   color: #e5e7eb;
 }
 
+/* ---- Page background ---- */
+
 body {
   margin: 0;
-  background: radial-gradient(circle at top, #1d283a, #020617);
+  background:
+    radial-gradient(circle at top, #1d283a, #020617),
+    radial-gradient(circle at bottom, #020617, #020617);
 }
+
+/* ---- Root container ---- */
 
 #root {
   min-height: 100vh;
 }
 
+/* ---- Shell: main glass card ---- */
+
 .app-shell {
   max-width: 1100px;
   margin: 24px auto;
   padding: 16px 20px 32px;
-  background: rgba(15, 23, 42, 0.95);
-  border-radius: 16px;
-  border: 1px solid rgba(148, 163, 184, 0.3);
-  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.9);
+  background: transparent;          /* glass base */
+  border-radius: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  box-shadow:
+    0 24px 80px rgba(15, 23, 42, 0.95),
+    0 0 0 1px rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
 }
+
+/* ---- Header ---- */
 
 .app-header {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   margin-bottom: 20px;
-  border-bottom: 1px solid rgba(51, 65, 85, 0.9);
+  border-bottom: 1px solid rgba(51, 65, 85, 0.85);
   padding-bottom: 10px;
 }
 
 .app-title {
-  font-size: 1.6rem;
+  font-size: 1.7rem;
   font-weight: 700;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
 }
 
 .app-subtitle {
@@ -50,10 +64,13 @@ body {
   letter-spacing: 0.12em;
   padding: 4px 9px;
   border-radius: 999px;
-  background: rgba(34, 197, 94, 0.12);
-  color: #bbf7d0;
-  border: 1px solid rgba(34, 197, 94, 0.4);
+  background: rgba(96, 165, 250, 0.12);
+  color: #bfdbfe;
+  border: 1px solid rgba(59, 130, 246, 0.6);
+  backdrop-filter: blur(14px);
 }
+
+/* ---- Layout grid ---- */
 
 .dashboard-grid {
   display: grid;
@@ -68,15 +85,22 @@ body {
   }
 }
 
+/* ---- Glass panels ---- */
+
 .panel {
-  background: rgba(15, 23, 42, 0.85);
-  border-radius: 12px;
+  background: radial-gradient(circle at top left, rgba(30, 64, 175, 0.14), rgba(15, 23, 42, 0.82));
+  border-radius: 16px;
   padding: 12px 14px;
   border: 1px solid rgba(51, 65, 85, 0.9);
+  box-shadow:
+    0 10px 30px rgba(15, 23, 42, 0.75),
+    0 0 0 1px rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
 }
 
 .panel h2 {
-  font-size: 1rem;
+  font-size: 1.05rem;
   margin: 0 0 10px;
 }
 
@@ -86,7 +110,7 @@ body {
   margin-bottom: 10px;
 }
 
-/* Filters */
+/* ---- Filters ---- */
 
 .filters-row {
   display: flex;
@@ -98,12 +122,13 @@ body {
 
 .filters-row select,
 .filters-row input {
-  background: #020617;
+  background: rgba(15, 23, 42, 0.9);
   border-radius: 999px;
-  border: 1px solid #334155;
+  border: 1px solid rgba(51, 65, 85, 0.9);
   color: #e5e7eb;
   padding: 6px 10px;
   font-size: 0.85rem;
+  backdrop-filter: blur(12px);
 }
 
 .filters-row input {
@@ -115,7 +140,7 @@ body {
   color: #9ca3af;
 }
 
-/* Form */
+/* ---- Forms ---- */
 
 .form-grid {
   display: grid;
@@ -142,18 +167,21 @@ body {
 .field input,
 .field select,
 .field textarea {
-  border-radius: 8px;
-  border: 1px solid #334155;
-  background: #020617;
+  border-radius: 10px;
+  border: 1px solid rgba(51, 65, 85, 0.95);
+  background: radial-gradient(circle at top, rgba(15, 23, 42, 0.95), #020617);
   color: #e5e7eb;
   padding: 6px 8px;
   font-size: 0.85rem;
+  backdrop-filter: blur(10px);
 }
 
 .field textarea {
   resize: vertical;
   min-height: 60px;
 }
+
+/* ---- Buttons ---- */
 
 .btn-row {
   display: flex;
@@ -173,33 +201,114 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  transition:
+    background-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.05s ease,
+    border-color 0.15s ease;
 }
 
 .btn-primary {
   background: linear-gradient(135deg, #22c55e, #16a34a);
   color: #022c22;
   font-weight: 600;
+  box-shadow: 0 0 18px rgba(34, 197, 94, 0.35);
+}
+
+.btn-primary:hover {
+  box-shadow: 0 0 24px rgba(34, 197, 94, 0.55);
+  transform: translateY(-0.5px);
 }
 
 .btn-secondary {
-  background: rgba(30, 64, 175, 0.2);
-  color: #bfdbfe;
-  border-color: rgba(59, 130, 246, 0.4);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.26), rgba(37, 99, 235, 0.18));
+  color: #dbeafe;
+  border-color: rgba(59, 130, 246, 0.6);
+}
+
+.btn-secondary:hover {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.4), rgba(37, 99, 235, 0.25));
+  box-shadow: 0 0 18px rgba(59, 130, 246, 0.45);
+  transform: translateY(-0.5px);
 }
 
 .btn-danger {
-  background: rgba(248, 113, 113, 0.18);
+  background: linear-gradient(135deg, rgba(248, 113, 113, 0.24), rgba(185, 28, 28, 0.35));
   color: #fecaca;
-  border-color: rgba(248, 113, 113, 0.5);
+  border-color: rgba(248, 113, 113, 0.6);
+}
+
+.btn-danger:hover {
+  box-shadow: 0 0 18px rgba(248, 113, 113, 0.55);
+  transform: translateY(-0.5px);
 }
 
 .btn-ghost {
-  background: transparent;
+  background: rgba(15, 23, 42, 0.7);
   color: #9ca3af;
-  border-color: #374151;
+  border-color: rgba(55, 65, 81, 0.9);
 }
 
-/* List */
+.btn-ghost:hover {
+  background: rgba(30, 64, 175, 0.18);
+  border-color: rgba(59, 130, 246, 0.6);
+}
+
+/* ---- Application table (new classes) ---- */
+
+.app-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.app-table th,
+.app-table td {
+  padding: 7px 6px;
+  border-bottom: 1px solid rgba(30, 41, 59, 0.9);
+}
+
+.app-table th {
+  text-align: left;
+  color: #9ca3af;
+  font-weight: 500;
+  background: rgba(15, 23, 42, 0.9);
+}
+
+/* Make rows interactive */
+.app-table tbody tr {
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* Hover color */
+.app-table tbody tr:hover {
+  background: rgba(15, 23, 42, 0.9);
+}
+
+/* Selected row: frosted blue bar */
+.app-table tbody tr.row-selected {
+  background: linear-gradient(90deg, rgba(59, 130, 246, 0.45), rgba(15, 23, 42, 0.95));
+  color: #e5e7eb;
+  box-shadow: inset 3px 0 0 rgba(96, 165, 250, 0.95);
+}
+
+.app-table tbody tr.row-selected td {
+  color: #e5e7eb;
+}
+
+/* Delete button inside selected row */
+.app-table tbody tr.row-selected .btn-ghost.danger {
+  background: transparent;
+  color: #fecaca;
+  border-color: rgba(248, 113, 113, 0.7);
+}
+
+.app-table tbody tr.row-selected .btn-ghost.danger:hover {
+  background: rgba(248, 113, 113, 0.12);
+}
+
+/* ---- Old list styles (safe to keep, not used now) ---- */
 
 .app-list-table {
   width: 100%;
@@ -231,14 +340,23 @@ body {
   background: rgba(30, 64, 175, 0.4);
 }
 
+/* ---- Status pills ---- */
+
 .status-pill {
   border-radius: 999px;
   padding: 2px 8px;
   font-size: 0.75rem;
-  border: 1px solid rgba(148, 163, 184, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: rgba(15, 23, 42, 0.7);
 }
 
-/* Notes */
+/* Optionally you can specialize by status if you add status-Offer etc. */
+/*
+.status-Offer { background: rgba(22, 163, 74, 0.18); border-color: rgba(34, 197, 94, 0.7); }
+.status-Rejected { background: rgba(248, 113, 113, 0.18); border-color: rgba(248, 113, 113, 0.7); }
+*/
+
+/* ---- Notes ---- */
 
 .notes-list {
   margin-top: 6px;
@@ -249,11 +367,12 @@ body {
 
 .note-item {
   padding: 6px 8px;
-  border-radius: 8px;
+  border-radius: 10px;
   background: rgba(15, 23, 42, 0.9);
   border: 1px solid rgba(51, 65, 85, 0.9);
   font-size: 0.8rem;
   margin-bottom: 4px;
+  backdrop-filter: blur(10px);
 }
 
 .note-meta {
@@ -262,8 +381,23 @@ body {
   margin-bottom: 2px;
 }
 
+/* ---- Empty states ---- */
+
 .empty-state {
   font-size: 0.8rem;
   color: #6b7280;
   padding: 8px;
 }
+
+/* Force main shell to be transparent */
+/* Make the main shell invisible so only panels look like glass cards */
+.app-shell {
+  max-width: 1150px;
+  margin: 24px auto;
+  padding: 0 20px 32px;
+  background: transparent !important;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+}
+

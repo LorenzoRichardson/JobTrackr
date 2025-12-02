@@ -1,5 +1,4 @@
 // src/components/ApplicationList.jsx
-import ApplicationNotes from './ApplicationNotes';
 
 export default function ApplicationList({
   applications,
@@ -15,12 +14,12 @@ export default function ApplicationList({
       </div>
 
       {applications.length === 0 ? (
-        <div className="empty-state">
-          No applications yet. Use the form on the left to add your first one.
+        <div className="empty-state" style={{ marginTop: 12 }}>
+          No applications yet. Click &quot;+ New Application&quot; to add one.
         </div>
       ) : (
-        <>
-          <table className="app-list-table">
+        <div className="table-wrapper" style={{ marginTop: 12 }}>
+          <table className="app-table">
             <thead>
               <tr>
                 <th>Company</th>
@@ -28,58 +27,52 @@ export default function ApplicationList({
                 <th>Status</th>
                 <th>Type</th>
                 <th>Applied</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
+                <th style={{ width: 80 }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {applications.map((app) => (
-                <tr
-                  key={app.id}
-                  className={
-                    'app-row' + (app.id === selectedId ? ' selected' : '')
-                  }
-                  onClick={() => onSelect(app.id)}
-                >
-                  <td>{app.company_name}</td>
-                  <td>{app.role_title}</td>
-                  <td>
-                    <span className="status-pill">{app.status}</span>
-                  </td>
-                  <td>{app.role_type || '-'}</td>
-                  <td>{app.applied_date || '-'}</td>
-                  <td
-                    onClick={(e) => {
-                      e.stopPropagation();
-                    }}
-                    style={{ textAlign: 'right' }}
+              {applications.map((app) => {
+                const isSelected = app.id === selectedId;
+
+                return (
+                  <tr
+                    key={app.id}
+                    className={isSelected ? 'row-selected' : ''}
+                    onClick={() => onSelect(app.id)}
                   >
-                    <button
-                      className="btn-danger"
-                      style={{ fontSize: '0.75rem', padding: '3px 8px' }}
-                      onClick={() => {
-                        if (
-                          window.confirm(
-                            `Delete application for ${app.company_name}?`
-                          )
-                        ) {
+                    <td>{app.company_name}</td>
+                    <td>{app.role_title}</td>
+                    <td>
+                      <span
+                        className={`status-pill status-${app.status || ''}`}
+                      >
+                        {app.status || '—'}
+                      </span>
+                    </td>
+                    <td>{app.role_type || '—'}</td>
+                    <td>
+                      {app.applied_date
+                        ? String(app.applied_date).slice(0, 10)
+                        : '—'}
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn-ghost danger"
+                        onClick={(e) => {
+                          e.stopPropagation(); // don’t change selection on delete
                           onDelete(app.id);
-                        }
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
-
-          {selectedId && (
-            <ApplicationNotes
-              application={applications.find((a) => a.id === selectedId)}
-            />
-          )}
-        </>
+        </div>
       )}
     </div>
   );
