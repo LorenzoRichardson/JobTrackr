@@ -8,12 +8,21 @@ import AnalyticsPanel from './components/AnalyticsPanel';
 import TimelinePanel from './components/TimelinePanel';
 import NotesPanel from './components/NotesPanel';
 import NotesPreview from './components/NotesPreview';
+import LoginPanel from './components/LoginPanel';
 
 export default function App() {
+  // ======= AUTH STATE =======
+  const [auth, setAuth] = useState({
+    user: null,
+    token: null,
+    checking: true,
+  });
+
+  // ======= APP DATA STATE =======
   const [applications, setApplications] = useState([]);
   const [filters, setFilters] = useState({ status: '', query: '' });
   const [selectedId, setSelectedId] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loadingApps, setLoadingApps] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -27,49 +36,97 @@ export default function App() {
     return () => clearTimeout(id);
   }, [toast]);
 
-  // Load applications
+  // Helper to build auth headers
+  const authHeaders = auth.token
+    ? { Authorization: `Bearer ${auth.token}` }
+    : {};
+
+  // ======= CHECK EXISTING SESSION ON LOAD =======
   useEffect(() => {
-    async function load() {
+    async function checkSession() {
       try {
-        const res = await fetch('/api/applications');
-        const data = await res.json();
-        setApplications(data);
-        if (data.length > 0) {
-          setSelectedId(data[0].id);
+        const saved = localStorage.getItem('jobtrackr_auth');
+        if (!saved) {
+          setAuth({ user: null, token: null, checking: false });
+          return;
         }
+        const parsed = JSON.parse(saved);
+        if (!parsed.token) {
+          setAuth({ user: null, token: null, checking: false });
+          return;
+        }
+
+        const res = await fetch('/api/auth/me', {
+          headers: {
+            Authorization: `Bearer ${parsed.token}`,
+          },
+        });
+
+        if (!res.ok) {
+          throw new Error('Session check failed');
+        }
+
+        const user = await res.json();
+        setAuth({ user, token: parsed.token, checking: false });
       } catch (err) {
-        console.error('Failed to load applications:', err);
-        setLoadError('Failed to load applications from server.');
-      } finally {
-        setLoading(false);
+        console.error('Session check error:', err);
+        localStorage.removeItem('jobtrackr_auth');
+        setAuth({ user: null, token: null, checking: false });
       }
     }
-    load();
+
+    checkSession();
   }, []);
 
-  // Filters
-  const filteredApps = useMemo(() => {
-    return applications.filter((app) => {
-      if (filters.status && app.status !== filters.status) return false;
-      if (filters.query) {
-        const q = filters.query.toLowerCase();
-        const text = `${app.company_name} ${app.role_title}`.toLowerCase();
-        if (!text.includes(q)) return false;
+  // ======= UTIL: reload applications from backend =======
+  async function reloadApplications(tokenToUse) {
+    const token = tokenToUse || auth.token;
+    if (!token) return;
+
+    setLoadingApps(true);
+    setLoadError('');
+    try {
+      const res = await fetch('/api/applications', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        throw new Error('Failed to load applications');
       }
-      return true;
-    });
-  }, [applications, filters]);
+      const data = await res.json();
+      setApplications(Array.isArray(data) ? data : []);
+      if (data.length > 0) {
+        setSelectedId(data[0].id);
+      } else {
+        setSelectedId(null);
+      }
+    } catch (err) {
+      console.error('Load applications error:', err);
+      setLoadError('Failed to load applications from server.');
+      setApplications([]);
+      setSelectedId(null);
+    } finally {
+      setLoadingApps(false);
+    }
+  }
+
+  // ======= LOAD APPLICATIONS AFTER AUTH =======
+  useEffect(() => {
+    if (!auth.user || !auth.token) return;
+    reloadApplications(auth.token);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth.user, auth.token]);
 
   const selectedApplication =
     applications.find((a) => a.id === selectedId) || null;
 
-  // Analytics
+  // ======= ANALYTICS =======
   const analytics = useMemo(() => {
     const total = applications.length;
     const byStatus = {};
     const perMonth = {};
 
     for (const app of applications) {
+      if (!app) continue;
       const status = app.status || 'Unknown';
       byStatus[status] = (byStatus[status] || 0) + 1;
 
@@ -90,7 +147,23 @@ export default function App() {
     };
   }, [applications]);
 
-  // Timeline
+  // ======= FILTERS =======
+  const filteredApps = useMemo(() => {
+    return applications.filter((app) => {
+      if (!app) return false;
+      if (filters.status && app.status !== filters.status) return false;
+      if (filters.query) {
+        const q = filters.query.toLowerCase();
+        const company = app.company_name || '';
+        const role = app.role_title || '';
+        const text = `${company} ${role}`.toLowerCase();
+        if (!text.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [applications, filters]);
+
+  // ======= TIMELINE =======
   const upcomingEvents = useMemo(() => {
     const events = [];
     const today = new Date();
@@ -117,6 +190,7 @@ export default function App() {
     };
 
     for (const app of applications) {
+      if (!app) continue;
       pushEvent(app, app.oa_due_date, 'OA Due');
       pushEvent(app, app.next_interview_date, 'Interview');
     }
@@ -126,32 +200,46 @@ export default function App() {
     return events;
   }, [applications]);
 
-  // CRUD save
+  // ======= CRUD: Save application =======
   const handleSaveApplication = async (form) => {
+    if (!auth.token) return;
     setSaving(true);
     try {
+      let res;
       if (selectedApplication) {
-        const res = await fetch(`/api/applications/${selectedApplication.id}`, {
+        res = await fetch(`/api/applications/${selectedApplication.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...authHeaders,
+          },
           body: JSON.stringify(form),
         });
-        const updated = await res.json();
-        setApplications((prev) =>
-          prev.map((app) => (app.id === updated.id ? updated : app))
-        );
-        setToast({ type: 'success', message: 'Application updated.' });
       } else {
-        const res = await fetch('/api/applications', {
+        res = await fetch('/api/applications', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...authHeaders,
+          },
           body: JSON.stringify(form),
         });
-        const created = await res.json();
-        setApplications((prev) => [created, ...prev]);
-        setSelectedId(created.id);
-        setToast({ type: 'success', message: 'Application created.' });
       }
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error((data && data.error) || 'Failed to save application');
+      }
+
+      // After create/update, always reload from server to avoid weird state
+      await reloadApplications();
+
+      setToast({
+        type: 'success',
+        message: selectedApplication
+          ? 'Application updated.'
+          : 'Application created.',
+      });
     } catch (err) {
       console.error('Save application failed:', err);
       setToast({
@@ -164,11 +252,19 @@ export default function App() {
   };
 
   const handleDelete = async (id) => {
+    if (!auth.token) return;
     if (!window.confirm('Delete this application?')) return;
     try {
-      await fetch(`/api/applications/${id}`, { method: 'DELETE' });
-      setApplications((prev) => prev.filter((a) => a.id !== id));
-      if (selectedId === id) setSelectedId(null);
+      const res = await fetch(`/api/applications/${id}`, {
+        method: 'DELETE',
+        headers: { ...authHeaders },
+      });
+      if (!res.ok && res.status !== 204) {
+        const data = await res.json().catch(() => null);
+        throw new Error((data && data.error) || 'Delete failed');
+      }
+      // reload from backend after delete
+      await reloadApplications();
       setToast({ type: 'success', message: 'Application deleted.' });
     } catch (err) {
       console.error('Delete application failed:', err);
@@ -187,15 +283,19 @@ export default function App() {
     setEditorOpen(true);
   };
 
-  // Email → DB update
+  // ======= Email → DB update (auth needed) =======
   const handleEmailStatus = async (result) => {
+    if (!auth.token) return;
     const { company_guess, status, note } = result || {};
     if (!status || !company_guess) return;
 
     try {
       const res = await fetch('/api/applications/email-update', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
         body: JSON.stringify({ company_guess, status, note }),
       });
 
@@ -205,7 +305,11 @@ export default function App() {
       }
 
       const updated = await res.json();
+      if (!updated || !updated.id) {
+        return;
+      }
 
+      // update local state
       setApplications((prev) =>
         prev.map((app) => (app.id === updated.id ? updated : app))
       );
@@ -220,12 +324,111 @@ export default function App() {
     }
   };
 
+  // ======= Login / Register handler =======
+  async function handleAuth(credentials, mode) {
+    const path =
+      mode === 'register' ? '/api/auth/register' : '/api/auth/login';
+
+    const res = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(credentials),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Authentication failed');
+    }
+
+    setAuth({
+      user: data.user,
+      token: data.token,
+      checking: false,
+    });
+
+    localStorage.setItem(
+      'jobtrackr_auth',
+      JSON.stringify({ token: data.token })
+    );
+
+    // after login, load data
+    await reloadApplications(data.token);
+  }
+
+  function handleLogout() {
+    setAuth({ user: null, token: null, checking: false });
+    setApplications([]);
+    setSelectedId(null);
+    localStorage.removeItem('jobtrackr_auth');
+  }
+
+  // ======= Gmail integration handlers =======
+  async function handleConnectEmail() {
+    if (!auth.token) return;
+    try {
+      const res = await fetch('/api/gmail/auth-url', {
+        headers: { Authorization: `Bearer ${auth.token}` },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.url) {
+        throw new Error(data.error || 'Failed to get Gmail auth URL');
+      }
+
+      window.open(
+        data.url,
+        '_blank',
+        'width=500,height=700,noopener,noreferrer'
+      );
+
+      setToast({
+        type: 'success',
+        message: 'Gmail connect window opened. Complete it in the new tab.',
+      });
+    } catch (err) {
+      console.error('Connect email failed:', err);
+      setToast({
+        type: 'error',
+        message: 'Failed to start Gmail connect flow.',
+      });
+    }
+  }
+
+  async function handleSyncGmail() {
+    if (!auth.token) return;
+    try {
+      const res = await fetch('/api/gmail/sync', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${auth.token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Gmail sync failed');
+      }
+
+      await reloadApplications();
+
+      setToast({
+        type: 'success',
+        message: `Gmail sync complete. Updated ${data.updated || 0} applications.`,
+      });
+
+      setNotesRefreshKey((k) => k + 1);
+    } catch (err) {
+      console.error('Gmail sync error:', err);
+      setToast({
+        type: 'error',
+        message: 'Gmail sync failed. See console for details.',
+      });
+    }
+  }
+
   const editorButtonLabel = editorOpen
     ? 'Hide Application Editor'
     : selectedApplication
     ? 'Edit Selected Application'
     : 'Add Application';
 
+  // ======= RENDER =======
   return (
     <div className="app-shell">
       {/* Toast */}
@@ -261,10 +464,23 @@ export default function App() {
         </div>
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {auth.user && (
+            <span
+              style={{
+                fontSize: '0.8rem',
+                color: '#9ca3af',
+                marginRight: 4,
+              }}
+            >
+              Signed in as {auth.user.email}
+            </span>
+          )}
+
           <button
             type="button"
             className="btn-secondary"
             onClick={handleNewApplication}
+            disabled={!auth.user}
           >
             + New Application
           </button>
@@ -272,90 +488,134 @@ export default function App() {
           <button
             type="button"
             className="btn-ghost"
-            title="Future: connect email inbox and auto-update statuses"
+            title="Connect Gmail so JobTrackr can read status emails."
+            onClick={handleConnectEmail}
+            disabled={!auth.user}
           >
-            Connect Email (Coming Soon)
+            Connect Gmail
           </button>
 
           <div className="app-badge">
             CS360 Prototype · Full Stack + Insights
           </div>
+
+          {auth.user && (
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={handleLogout}
+            >
+              Logout
+            </button>
+          )}
         </div>
       </header>
 
-      {loadError && (
-        <div className="panel" style={{ marginBottom: 10 }}>
-          <div className="empty-state">{loadError}</div>
+      {/* If still checking session */}
+      {auth.checking && (
+        <div className="panel">
+          <div className="empty-state">Checking session…</div>
         </div>
       )}
 
-      <ApplicationFilters filters={filters} onChange={setFilters} />
-
-      {loading ? (
-        <div className="panel">
-          <div className="empty-state">Loading applications…</div>
-        </div>
-      ) : (
+      {/* Not logged in: show login/register only */}
+      {!auth.checking && !auth.user && (
         <>
-          {/* Top grid: Analytics + Application list */}
-          <div className="dashboard-grid">
-            <AnalyticsPanel analytics={analytics} />
-            <ApplicationList
-              applications={filteredApps}
-              selectedId={selectedId}
-              onSelect={handleSelect}
-              onDelete={handleDelete}
-            />
-          </div>
+          <LoginPanel onAuth={handleAuth} />
+        </>
+      )}
 
-          {/* Separate full-width notes preview panel */}
-          <NotesPreview
-            selectedApplication={selectedApplication}
-            refreshKey={notesRefreshKey}
-          />
-
-          {/* Timeline ABOVE the editor */}
-          <TimelinePanel events={upcomingEvents} />
-
-          {/* Button to open/close the editor */}
-          <div style={{ marginTop: 16 }}>
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => setEditorOpen((open) => !open)}
-            >
-              {editorButtonLabel}
-            </button>
-          </div>
-
-          {/* Edit/Add Application + editable notes */}
-          {editorOpen && (
-            <div style={{ marginTop: 12 }}>
-              <ApplicationForm
-                selected={selectedApplication}
-                onSave={handleSaveApplication}
-                onClearSelection={handleClearSelection}
-                saving={saving}
-              />
-
-              {selectedApplication ? (
-                <NotesPanel
-                  applicationId={selectedApplication.id}
-                  refreshKey={notesRefreshKey}
-                  onNoteAdded={() => setNotesRefreshKey((k) => k + 1)}
-                />
-              ) : (
-                <div className="panel" style={{ marginTop: 12 }}>
-                  <div className="empty-state">
-                    Save the application first to start attaching notes.
-                  </div>
-                </div>
-              )}
+      {/* Logged in: full dashboard */}
+      {!auth.checking && auth.user && (
+        <>
+          {loadError && (
+            <div className="panel" style={{ marginBottom: 10 }}>
+              <div className="empty-state">{loadError}</div>
             </div>
           )}
 
-          {/* Email simulator last */}
-          <EmailSimulator onEmailStatus={handleEmailStatus} />
+          {/* Gmail sync panel */}
+          <div className="panel" style={{ marginBottom: 10 }}>
+            <div className="panel-subtitle">
+              After connecting Gmail, pull in recent application status emails.
+            </div>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={handleSyncGmail}
+              disabled={!auth.user}
+            >
+              Sync Gmail Now
+            </button>
+          </div>
+
+          <ApplicationFilters filters={filters} onChange={setFilters} />
+
+          {loadingApps ? (
+            <div className="panel">
+              <div className="empty-state">Loading applications…</div>
+            </div>
+          ) : (
+            <>
+              <div className="dashboard-grid">
+                <AnalyticsPanel analytics={analytics} />
+                <ApplicationList
+                  applications={filteredApps}
+                  selectedId={selectedId}
+                  onSelect={handleSelect}
+                  onDelete={handleDelete}
+                />
+              </div>
+
+              <NotesPreview
+                selectedApplication={selectedApplication}
+                refreshKey={notesRefreshKey}
+                token={auth.token}
+              />
+
+              <TimelinePanel events={upcomingEvents} />
+
+              <div style={{ marginTop: 16 }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setEditorOpen((open) => !open)}
+                >
+                  {editorButtonLabel}
+                </button>
+              </div>
+
+              {editorOpen && (
+                <div style={{ marginTop: 12 }}>
+                  <ApplicationForm
+                    selected={selectedApplication}
+                    onSave={handleSaveApplication}
+                    onClearSelection={handleClearSelection}
+                    saving={saving}
+                  />
+
+                  {selectedApplication ? (
+                    <NotesPanel
+                      applicationId={selectedApplication.id}
+                      refreshKey={notesRefreshKey}
+                      token={auth.token}
+                      onNoteAdded={() =>
+                        setNotesRefreshKey((k) => k + 1)
+                      }
+                    />
+                  ) : (
+                    <div className="panel" style={{ marginTop: 12 }}>
+                      <div className="empty-state">
+                        Save the application first to start attaching notes.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <EmailSimulator onEmailStatus={handleEmailStatus} />
+            </>
+          )}
         </>
       )}
     </div>

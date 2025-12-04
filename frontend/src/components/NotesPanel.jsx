@@ -1,54 +1,101 @@
 // src/components/NotesPanel.jsx
 import { useEffect, useState } from 'react';
 
-export default function NotesPanel({ applicationId, refreshKey, onNoteAdded }) {
+export default function NotesPanel({ applicationId, refreshKey, token, onNoteAdded }) {
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState('');
   const [newNote, setNewNote] = useState('');
-  const [savingNote, setSavingNote] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
+  // Load notes whenever application or refreshKey changes
   useEffect(() => {
-    if (!applicationId) return;
+    if (!applicationId || !token) {
+      setNotes([]);
+      return;
+    }
+
+    let cancelled = false;
 
     async function loadNotes() {
       setLoading(true);
-      setLoadError('');
+      setError('');
       try {
-        const res = await fetch(`/api/applications/${applicationId}/notes`);
+        const res = await fetch(`/api/applications/${applicationId}/notes`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!res.ok) {
+          console.error('NotesPanel fetch failed:', res.status, res.statusText);
+          if (res.status === 401) {
+            setError('Not authorized to load notes.');
+          }
+          if (!cancelled) {
+            setNotes([]);
+          }
+          return;
+        }
+
         const data = await res.json();
-        setNotes(data);
+        if (!cancelled) {
+          setNotes(Array.isArray(data) ? data : []);
+        }
       } catch (err) {
-        console.error('Failed to load notes:', err);
-        setLoadError('Failed to load notes.');
+        console.error('NotesPanel error:', err);
+        if (!cancelled) {
+          setError('Failed to load notes.');
+          setNotes([]);
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
     loadNotes();
-  }, [applicationId, refreshKey]);
 
-  async function handleAddNote() {
-    if (!newNote.trim() || !applicationId) return;
-    setSavingNote(true);
+    return () => {
+      cancelled = true;
+    };
+  }, [applicationId, refreshKey, token]);
+
+  async function handleAddNote(e) {
+    e.preventDefault();
+    if (!newNote.trim() || !applicationId || !token) return;
+
+    setSaving(true);
+    setError('');
     try {
       const res = await fetch(`/api/applications/${applicationId}/notes`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: newNote }),
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ content: newNote.trim() }),
       });
-      const created = await res.json();
-      setNotes((prev) => [created, ...prev]);
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error((data && data.error) || 'Failed to add note');
+      }
+
+      // Add new note to the top of the list
+      setNotes((prev) => [data, ...(Array.isArray(prev) ? prev : [])]);
       setNewNote('');
+
       if (onNoteAdded) {
-        onNoteAdded(); // tells App to refresh preview too
+        onNoteAdded();
       }
     } catch (err) {
-      console.error('Failed to add note:', err);
-      alert('Failed to add note.');
+      console.error('Add note failed:', err);
+      setError(err.message || 'Failed to add note.');
     } finally {
-      setSavingNote(false);
+      setSaving(false);
     }
   }
 
@@ -57,7 +104,7 @@ export default function NotesPanel({ applicationId, refreshKey, onNoteAdded }) {
       <div className="panel" style={{ marginTop: 12 }}>
         <h2>Notes</h2>
         <div className="panel-subtitle">
-          Select an application to view and add notes.
+          Save the application first to start attaching notes.
         </div>
       </div>
     );
@@ -70,75 +117,52 @@ export default function NotesPanel({ applicationId, refreshKey, onNoteAdded }) {
         Email updates and your own notes are tracked here for this application.
       </div>
 
-      {/* New note input */}
-      <div style={{ marginTop: 10 }}>
-        <textarea
-          placeholder="Add a note (e.g., 'Spoke with recruiter, waiting on next steps')"
-          value={newNote}
-          onChange={(e) => setNewNote(e.target.value)}
-          style={{ minHeight: 60 }}
-        />
-        <div style={{ marginTop: 6 }}>
+      <form onSubmit={handleAddNote} className="form-grid" style={{ marginTop: 6 }}>
+        <div className="field form-grid-full">
+          <label htmlFor="new-note">Add a note (e.g., "Spoke with recruiter")</label>
+          <textarea
+            id="new-note"
+            value={newNote}
+            onChange={(e) => setNewNote(e.target.value)}
+            placeholder="Add a note (e.g., 'Spoke with recruiter, waiting on next steps')"
+          />
+        </div>
+        <div className="btn-row form-grid-full" style={{ marginTop: 6 }}>
           <button
-            type="button"
-            className="btn-secondary"
-            onClick={handleAddNote}
-            disabled={savingNote || !newNote.trim()}
+            type="submit"
+            className="btn-primary"
+            disabled={saving || !newNote.trim()}
           >
-            {savingNote ? 'Saving…' : 'Add Note'}
+            {saving ? 'Adding...' : 'Add Note'}
           </button>
         </div>
-      </div>
+      </form>
 
-      {/* Notes list */}
-      {loading ? (
-        <div className="empty-state" style={{ marginTop: 10 }}>
-          Loading notes…
+      {error && (
+        <div className="empty-state" style={{ marginTop: 6, color: '#fecaca' }}>
+          {error}
         </div>
-      ) : loadError ? (
-        <div className="empty-state" style={{ marginTop: 10 }}>
-          {loadError}
-        </div>
-      ) : notes.length === 0 ? (
-        <div className="empty-state" style={{ marginTop: 10 }}>
-          No notes yet. Email-based updates and your notes will appear here.
-        </div>
-      ) : (
-        <ul
-          style={{
-            listStyle: 'none',
-            padding: 0,
-            marginTop: 12,
-          }}
-        >
+      )}
+
+      {loading && <div className="empty-state">Loading notes…</div>}
+
+      {!loading && notes.length === 0 && !error && (
+        <div className="empty-state">No notes yet for this application.</div>
+      )}
+
+      {!loading && notes.length > 0 && (
+        <div className="notes-list">
           {notes.map((note) => (
-            <li
-              key={note.id}
-              style={{
-                padding: '8px 0',
-                borderBottom: '1px solid #e5e7eb',
-              }}
-            >
-              <div
-                style={{
-                  fontSize: '0.75rem',
-                  color: '#6b7280',
-                  marginBottom: 2,
-                }}
-              >
-                {new Date(note.created_at).toLocaleString()}
+            <div key={note.id} className="note-item">
+              <div className="note-meta">
+                {note.created_at
+                  ? new Date(note.created_at).toLocaleString()
+                  : ''}
               </div>
-              <div
-                style={{
-                  fontSize: '0.9rem',
-                  whiteSpace: 'pre-wrap',
-                }}
-              >
-                {note.content}
-              </div>
-            </li>
+              <div>{note.content}</div>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   );

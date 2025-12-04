@@ -1,100 +1,108 @@
 // src/components/NotesPreview.jsx
 import { useEffect, useState } from 'react';
 
-export default function NotesPreview({ selectedApplication, refreshKey }) {
+export default function NotesPreview({ selectedApplication, refreshKey, token }) {
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const appId = selectedApplication ? selectedApplication.id : null;
-
   useEffect(() => {
-    if (!appId) {
+    // No app selected or no token -> clear notes and skip
+    if (!selectedApplication || !selectedApplication.id || !token) {
       setNotes([]);
       return;
     }
 
+    let cancelled = false;
+
     async function loadNotes() {
       setLoading(true);
       try {
-        const res = await fetch(`/api/applications/${appId}/notes`);
+        const res = await fetch(
+          `/api/applications/${selectedApplication.id}/notes`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        if (!res.ok) {
+          console.error(
+            'NotesPreview fetch failed:',
+            res.status,
+            res.statusText
+          );
+          if (!cancelled) {
+            setNotes([]); // keep it as an array so .map is always safe
+          }
+          return;
+        }
+
         const data = await res.json();
-        setNotes(data);
+        if (!cancelled) {
+          setNotes(Array.isArray(data) ? data : []);
+        }
       } catch (err) {
-        console.error('Failed to load notes preview:', err);
-        setNotes([]);
+        console.error('NotesPreview error:', err);
+        if (!cancelled) {
+          setNotes([]);
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
     loadNotes();
-  }, [appId, refreshKey]);
 
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedApplication?.id, refreshKey, token]);
+
+  // If no application selected, show nothing / simple panel
   if (!selectedApplication) {
     return (
       <div className="panel" style={{ marginTop: 12 }}>
-        <h3 style={{ fontSize: '0.95rem' }}>Notes</h3>
+        <h2>Notes</h2>
         <div className="panel-subtitle">
-          Select an application to view its notes.
+          Select an application to see its recent notes.
         </div>
+        <div className="empty-state">No application selected.</div>
       </div>
     );
   }
 
   return (
     <div className="panel" style={{ marginTop: 12 }}>
-      <h3 style={{ fontSize: '0.95rem' }}>
+      <h2>
         Notes for {selectedApplication.company_name} –{' '}
         {selectedApplication.role_title}
-      </h3>
+      </h2>
       <div className="panel-subtitle">
         Read-only snapshot of notes for this application.
       </div>
 
-      {loading ? (
-        <div className="empty-state" style={{ marginTop: 8 }}>
-          Loading notes…
-        </div>
-      ) : notes.length === 0 ? (
-        <div className="empty-state" style={{ marginTop: 8 }}>
-          No notes for this application.
-        </div>
-      ) : (
-        <ul
-          style={{
-            listStyle: 'none',
-            padding: 0,
-            marginTop: 8,
-          }}
-        >
+      {loading && <div className="empty-state">Loading notes…</div>}
+
+      {!loading && notes.length === 0 && (
+        <div className="empty-state">No notes yet for this application.</div>
+      )}
+
+      {!loading && notes.length > 0 && (
+        <div className="notes-list">
           {notes.map((note) => (
-            <li
-              key={note.id}
-              style={{
-                padding: '6px 0',
-                borderBottom: '1px solid #1f2937',
-              }}
-            >
-              <div
-                style={{
-                  fontSize: '0.75rem',
-                  color: '#9ca3af',
-                  marginBottom: 2,
-                }}
-              >
-                {new Date(note.created_at).toLocaleString()}
+            <div key={note.id} className="note-item">
+              <div className="note-meta">
+                {note.created_at
+                  ? new Date(note.created_at).toLocaleString()
+                  : ''}
               </div>
-              <div
-                style={{
-                  fontSize: '0.85rem',
-                  whiteSpace: 'pre-wrap',
-                }}
-              >
-                {note.content}
-              </div>
-            </li>
+              <div>{note.content}</div>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   );
